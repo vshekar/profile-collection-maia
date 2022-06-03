@@ -229,3 +229,88 @@ def fly_maia(
         yield from bps.mv(maia.meta_val_scan_order_sp.value, "")
 
     return (yield from bpp.finalize_wrapper(_raster_plan(), _cleanup_plan()))
+
+
+def fly_maia_finger_sync(
+    ystart,
+    ystop,
+    ynum,
+    xstart,
+    xstop,
+    xnum,
+    dwell,
+    *,
+    group=None,
+    md=None,
+    shut_b,
+    hf_stage,
+):
+    shutter = shut_b
+    md = md or {}
+    _md = {
+        "detectors": ["maia"],
+        "shape": [ynum, xnum],
+        "motors": [m.name for m in [hf_stage.y, hf_stage.x]],
+        "num_steps": xnum * ynum,
+        "plan_args": dict(
+            ystart=ystart,
+            ystop=ystop,
+            ynum=ynum,
+            xstart=xstart,
+            xstop=xstop,
+            xnum=xnum,
+            dwell=dwell,
+            group=repr(group),
+            md=md,
+        ),
+        "extents": [[ystart, ystop], [xstart, xstop]],
+        "snaking": [False, True],
+        "plan_name": "fly_maia",
+    }
+    _md.update(md)
+
+    md = _md
+
+    if xstart > xstop:
+        xstop, xstart = xstart, xstop
+
+    if ystart > ystop:
+        ystop, ystart = ystart, ystop
+
+    # Pitch must match what raster driver uses for pitch ...
+    x_pitch = abs(xstop - xstart) / (xnum - 1)
+
+    # TODO compute this based on someting
+    spd_x = x_pitch / dwell
+
+    yield from bps.mv(hf_stage.x, xstart, hf_stage.y, ystart)
+
+    @bpp.reset_positions_decorator([hf_stage.x.velocity])
+    def _raster_plan():
+
+        # set the motors to the right speed
+        yield from bps.mv(hf_stage.x.velocity, spd_x)
+
+        yield from bps.mv(shutter, "Open")
+        yield from bps.open_run(md)
+
+        yield from bps.checkpoint()
+        # by row
+        for i, y_pos in enumerate(np.linspace(ystart, ystop, ynum)):
+            yield from bps.checkpoint()
+            # move to the row we want
+            yield from bps.mv(hf_stage.y, y_pos)
+            if i % 2:
+                # for odd-rows move from start to stop
+                yield from bps.mv(hf_stage.x, xstop)
+            else:
+                # for even-rows move from stop to start
+                yield from bps.mv(hf_stage.x, xstart)
+
+    def _cleanup_plan():
+        # shut the shutter
+        yield from bps.mv(shutter, "Close")
+
+        yield from bps.close_run()
+
+    return (yield from bpp.finalize_wrapper(_raster_plan(), _cleanup_plan()))
