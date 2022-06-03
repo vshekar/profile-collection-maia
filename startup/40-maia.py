@@ -180,6 +180,10 @@ def fly_maia(
                 hf_stage.y.get(),
                 maia.enc_axis_1_pos_sp.value.get(),
             )
+            yield from bps.trigger_and_read(
+                [hf_stage, maia.enc_axis_0_pos_sp.value, maia.enc_axis_1_pos_sp.value],
+                name="row_ends",
+            )
             if i % 2:
                 # for odd-rows move from start to stop
                 yield from bps.mv(hf_stage.x, xstop)
@@ -204,6 +208,11 @@ def fly_maia(
                     hf_stage.y.get(),
                     maia.enc_axis_1_pos_sp.value.get(),
                 )
+            yield from bps.trigger_and_read(
+                [hf_stage, maia.enc_axis_0_pos_sp.value, maia.enc_axis_1_pos_sp.value],
+                name="row_ends",
+            )
+
         fout.close()
 
     def _cleanup_plan():
