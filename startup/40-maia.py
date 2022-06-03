@@ -151,6 +151,8 @@ def fly_maia(
     @bpp.reset_positions_decorator([hf_stage.x.velocity])
     def _raster_plan():
 
+        # open file to save positions
+        fout = open("~/positions.dat", "w")
         # set the motors to the right speed
         yield from bps.mv(hf_stage.x.velocity, spd_x)
 
@@ -169,15 +171,40 @@ def fly_maia(
             yield from bps.checkpoint()
             # move to the row we want
             yield from bps.mv(hf_stage.y, y_pos)
-            yield from bps.sleep(0.15)
+            yield from bps.sleep(0.05)
+            fout.write(
+                "%i %g %g %g %g/n",
+                i,
+                hf_stage.x.get(),
+                maia.enc_axis_0_pos_sp.value.get(),
+                hf_stage.y.get(),
+                maia.enc_axis_1_pos_sp.value.get(),
+            )
             if i % 2:
                 # for odd-rows move from start to stop
                 yield from bps.mv(hf_stage.x, xstop)
                 yield from bps.sleep(0.05)
+                fout.write(
+                    "%i %g %g %g %g/n",
+                    i,
+                    hf_stage.x.get(),
+                    maia.enc_axis_0_pos_sp.value.get(),
+                    hf_stage.y.get(),
+                    maia.enc_axis_1_pos_sp.value.get(),
+                )
             else:
                 # for even-rows move from stop to start
                 yield from bps.mv(hf_stage.x, xstart)
                 yield from bps.sleep(0.05)
+                fout.write(
+                    "%i %g %g %g %g/n",
+                    i,
+                    hf_stage.x.get(),
+                    maia.enc_axis_0_pos_sp.value.get(),
+                    hf_stage.y.get(),
+                    maia.enc_axis_1_pos_sp.value.get(),
+                )
+        fout.close()
 
     def _cleanup_plan():
         # stop the maia ("I'll wait until you're done")
