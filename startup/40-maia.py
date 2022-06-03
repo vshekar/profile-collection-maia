@@ -115,7 +115,7 @@ def fly_maia(
 
     # Pitch must match what raster driver uses for pitch ...
     x_pitch = abs(xstop - xstart) / (xnum - 1)
-    # y_pitch = abs(ystop - ystart) / (ynum - 1) #rvt
+    y_pitch = abs(ystop - ystart) / (ynum - 1)
 
     # TODO compute this based on someting
     spd_x = x_pitch / dwell
@@ -132,7 +132,7 @@ def fly_maia(
     yield from bps.mv(maia.y_pixel_dim_origin_sp.value, ystart)
 
     yield from bps.mv(maia.x_pixel_dim_pitch_sp.value, x_pitch)
-    # yield from bps.mv(maia.y_pixel_dim_pitch_sp.value, y_pitch) #rvt
+    yield from bps.mv(maia.y_pixel_dim_pitch_sp.value, y_pitch)
 
     yield from bps.mv(maia.x_pixel_dim_coord_extent_sp.value, xnum)
     yield from bps.mv(maia.y_pixel_dim_coord_extent_sp.value, ynum)
