@@ -68,6 +68,8 @@ class QueueModel:
 
 
 class QueueWidget(QtWidgets.QWidget):
+    queue_updated = QtCore.Signal(object)
+
     def __init__(self):
         super().__init__()
         self.model = QueueModel()
@@ -135,6 +137,7 @@ class QueueWidget(QtWidgets.QWidget):
         self.list_widget.clear()
         for item in self.model.get_items():
             self.list_widget.addItem(str(item.label))
+        self.queue_updated.emit(self.model.get_items())
 
 
 class SamplePositionQueueWidget(QueueWidget):
@@ -145,8 +148,9 @@ class SamplePositionQueueWidget(QueueWidget):
 
 
 class CollectionQueueWidget(QueueWidget):
-    def add_item(self, collection_name, *params):
-        item = QueueItem(label=collection_name, data=params)
+    def add_item(self, label, *params):
+
+        item = QueueItem(label=label, data=params)
         self.model.add_item(item)
         self.update_list()
 
@@ -240,12 +244,12 @@ class RunEngineControls:
         self.button_pause.setText(button_pause_text)
 
 
-class SampleControlWidget(QtWidgets.QWidget):
+class SampleControlWidget(QtWidgets.QGroupBox):
     def __init__(self):
         super().__init__()
 
         # label = QtWidgets.QLabel("Sample control widget")
-
+        self.setTitle("Sample Control")
         nudge_buttons = QtWidgets.QGridLayout()
         # nudge_buttons.addWidget(label)
         self.nudge_amount_spin_box = QtWidgets.QSpinBox()
@@ -323,8 +327,8 @@ class SampleControlWidget(QtWidgets.QWidget):
         self.position_save_text_box = QtWidgets.QLineEdit()
         self.position_save_button = QtWidgets.QPushButton("Save Position")
 
-        readback_values_layout.addWidget(self.position_save_text_box, 3, 0, 1, 2)
-        readback_values_layout.addWidget(self.position_save_button, 4, 0, 1, 2)
+        readback_values_layout.addWidget(self.position_save_text_box, 3, 0, 1, 1)
+        readback_values_layout.addWidget(self.position_save_button, 3, 1, 1, 1)
 
         self.saved_positions_list = SamplePositionQueueWidget()
         self.position_save_button.clicked.connect(self.save_motor_positions)
@@ -338,7 +342,10 @@ class SampleControlWidget(QtWidgets.QWidget):
 
     def save_motor_positions(self):
         self.saved_positions_list.add_item(
-            self.position_save_text_box.text(), M.x.read(), M.y.read(), M.z.read()
+            self.position_save_text_box.text(),
+            M.x.user_readback.get(),
+            M.y.user_readback.get(),
+            M.z.user_readback.get(),
         )
 
     def update_label(self, label_name, value):
@@ -362,13 +369,107 @@ class SampleControlWidget(QtWidgets.QWidget):
         RE(bps.mvr(motor, float(self.nudge_amount_spin_box.text()) * factor))
 
 
-class ScanSetupWidget(QtWidgets.QWidget):
+class ScanSetupWidget(QtWidgets.QGroupBox):
+    add_to_queue_signal = QtCore.Signal(str, object)
+
     def __init__(self):
         super().__init__()
         self.widget_layout = QtWidgets.QGridLayout()
-        label = QtWidgets.QLabel("Scan Setup widget")
-        self.widget_layout.addWidget(label)
+        self.setTitle("Scan Setup")
+        # label = QtWidgets.QLabel("Scan Setup widget")
+        # self.widget_layout.addWidget(label)
         self.setLayout(self.widget_layout)
+        self.positions: list[QueueItem] = []
+        self.setup_position_inputs()
+        self.setup_other_inputs()
+
+    def setup_position_inputs(self):
+        validator = QtGui.QDoubleValidator()
+        self.start_x_input = QtWidgets.QLineEdit()
+        self.start_x_input.setValidator(validator)
+        self.start_y_input = QtWidgets.QLineEdit()
+        self.start_y_input.setValidator(validator)
+        self.stop_x_input = QtWidgets.QLineEdit()
+        self.stop_x_input.setValidator(validator)
+        self.stop_y_input = QtWidgets.QLineEdit()
+        self.stop_y_input.setValidator(validator)
+
+        self.start_presets_combobox = QtWidgets.QComboBox()
+        self.end_presets_combobox = QtWidgets.QComboBox()
+        self.start_presets_combobox.currentIndexChanged.connect(self.populate_start)
+        self.end_presets_combobox.currentIndexChanged.connect(self.populate_end)
+
+        start_label = QtWidgets.QLabel("Start")
+        stop_label = QtWidgets.QLabel("Stop")
+        x_label = QtWidgets.QLabel("X")
+        y_label = QtWidgets.QLabel("Y")
+
+        self.widget_layout.addWidget(start_label, 1, 0)
+        self.widget_layout.addWidget(stop_label, 2, 0)
+        self.widget_layout.addWidget(x_label, 0, 1)
+        self.widget_layout.addWidget(y_label, 0, 2)
+
+        self.widget_layout.addWidget(self.start_x_input, 1, 1)
+        self.widget_layout.addWidget(self.start_y_input, 1, 2)
+        self.widget_layout.addWidget(self.stop_x_input, 2, 1)
+        self.widget_layout.addWidget(self.stop_y_input, 2, 2)
+        self.widget_layout.addWidget(self.start_presets_combobox, 1, 3)
+        self.widget_layout.addWidget(self.end_presets_combobox, 2, 3)
+
+    def populate_start(self, idx):
+        if self.positions:
+            x, y, z = self.positions[idx].data
+            self.start_x_input.setText(str(x))
+            self.start_y_input.setText(str(y))
+
+    def populate_end(self, idx):
+        if self.positions:
+            x, y, z = self.positions[idx].data
+            self.stop_x_input.setText(str(x))
+            self.stop_y_input.setText(str(y))
+
+    def update_combo_boxes(self, positions: list[QueueItem]):
+        self.positions = [QueueItem("", (0, 0, 0))] + positions
+        self.start_presets_combobox.clear()
+        self.start_presets_combobox.addItems([pos.label for pos in self.positions])
+        self.end_presets_combobox.clear()
+        self.end_presets_combobox.addItems([pos.label for pos in self.positions])
+
+    def setup_other_inputs(self):
+        float_validator = QtGui.QDoubleValidator()
+        int_validator = QtGui.QIntValidator()
+        self.step_size_input = QtWidgets.QLineEdit()
+        self.step_size_input.setValidator(int_validator)
+        self.dwell_input = QtWidgets.QLineEdit()
+        self.dwell_input.setValidator(float_validator)
+        self.estimated_time = QtWidgets.QLabel("0")
+
+        self.widget_layout.addWidget(QtWidgets.QLabel("Step Size:"), 3, 0)
+        self.widget_layout.addWidget(self.step_size_input, 3, 1)
+        self.widget_layout.addWidget(QtWidgets.QLabel("Dwell :"), 4, 0)
+        self.widget_layout.addWidget(self.dwell_input, 4, 1)
+
+        self.scan_name_input = QtWidgets.QLineEdit()
+        self.widget_layout.addWidget(QtWidgets.QLabel("Scan Name :"), 5, 0)
+        self.widget_layout.addWidget(self.scan_name_input, 5, 1)
+
+        self.add_to_queue_button = QtWidgets.QPushButton("Add to Queue")
+        self.widget_layout.addWidget(self.add_to_queue_button, 6, 0)
+        self.add_to_queue_button.clicked.connect(self.add_to_queue)
+
+    def add_to_queue(self):
+        self.add_to_queue_signal.emit(
+            self.scan_name_input.text(),
+            (
+                float(self.start_y_input.text()),
+                float(self.stop_y_input.text()),
+                int(self.step_size_input.text()),
+                float(self.stop_x_input.text()),
+                float(self.stop_y_input.text()),
+                int(self.step_size_input.text()),
+                float(self.dwell_input.text()),
+            ),
+        )
 
 
 class MicroscopeViewWidget(QtWidgets.QWidget):
@@ -431,6 +532,11 @@ class MAIAGUI(QtWidgets.QMainWindow):
 
         self.detector_image_widget = DetectorImageWidget()
         self.widget_layout.addWidget(self.detector_image_widget, 2, 2)
+
+        self.sample_control_widget.saved_positions_list.queue_updated.connect(
+            self.scan_setup_widget.update_combo_boxes
+        )
+        self.scan_setup_widget.add_to_queue_signal.connect(self.queue_widget.add_item)
 
     def check_toggled(self, checkbox, check_state):
         if check_state == QtCore.Qt.CheckState.Checked:
